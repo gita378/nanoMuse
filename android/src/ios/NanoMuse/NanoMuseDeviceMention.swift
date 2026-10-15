@@ -44,11 +44,19 @@ enum NanoMuseDeviceMention {
         return nil
     }
 
+    @MainActor
+    static func defaultHit(_ text: String) -> Hit? {
+        guard let u = NanoMuseHub.shared.others.first(where: { $0.name == "u" && $0.online }) else {
+            return nil
+        }
+        return Hit(device: u, task: text)
+    }
+
     /// Runs the mention when there is one: the person's line goes into the chat, the device's
     /// answer follows when it comes. Returns false when the text does not address a device.
     @MainActor
     static func handle(_ text: String, in vm: AIChatViewModel) -> Bool {
-        guard let hit = parse(text) else { return false }
+        guard let hit = parse(text) ?? defaultHit(text) else { return false }
         let device = hit.device
         let task = hit.task.isEmpty ? text : hit.task
         vm.nmLocalTurn(user: text)
