@@ -1,4 +1,4 @@
-name: Publish Release IPA
+name: Publish TrollStore IPA to Release
 
 on:
   workflow_dispatch:
@@ -10,22 +10,20 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Download Artifact from previous run
+      - name: Download Artifact from build run
         uses: actions/download-artifact@v4
         with:
-          name: nanoMuse-unsigned-ipa
-          run-id: 38737942723
+          name: nanoMuse-trollstore-release-ipa
+          run-id: 38753511885
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ./ipa_out
 
       - name: Verify IPA
         run: |
-          ls -lh
-          file nanoMuse-unsigned.ipa || true
+          ls -lh ./ipa_out
 
       - name: Upload to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.1.0-custom
-          files: nanoMuse-unsigned.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v0.1.0-custom ./ipa_out/nanoMuse-trollstore-release.ipa --clobber
