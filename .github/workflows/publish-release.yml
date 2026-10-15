@@ -18,12 +18,24 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: ./ipa_out
 
-      - name: Verify IPA
+      - name: Upload via curl to Release
         run: |
-          ls -lh ./ipa_out
+          FILE="./ipa_out/nanoMuse-trollstore-release.ipa"
+          ls -lh "$FILE"
+          
+          # Delete existing asset if any
+          ASSET_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/gita378/nanoMuse/releases/413830470/assets" | \
+            jq -r '.[] | select(.name=="nanoMuse-trollstore-release.ipa") | .id')
+          if [ -n "$ASSET_ID" ] && [ "$ASSET_ID" != "null" ]; then
+            echo "Deleting old asset: $ASSET_ID"
+            curl -s -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/gita378/nanoMuse/releases/assets/$ASSET_ID"
+          fi
 
-      - name: Upload to Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload v0.1.0-custom ./ipa_out/nanoMuse-trollstore-release.ipa --clobber
+          echo "Uploading asset..."
+          curl -s -f -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$FILE" \
+            "https://uploads.github.com/repos/gita378/nanoMuse/releases/413830470/assets?name=nanoMuse-trollstore-release.ipa"
