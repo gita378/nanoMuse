@@ -9,6 +9,10 @@ name: iOS · build check
 # cheap. No secrets: CODE_SIGNING_ALLOWED=NO, so a fork's pull request can run it too.
 
 on:
+  push:
+    paths:
+      - 'android/src/ios/**'
+      - '.github/workflows/ios-check.yml'
   pull_request:
     paths:
       - 'android/src/ios/**'
@@ -107,3 +111,21 @@ jobs:
           path: android/src/ios/build/xcodebuild.log
           retention-days: 7
           if-no-files-found: warn
+
+      - name: Package unsigned IPA
+        working-directory: android/src/ios
+        run: |
+          APP_PATH=$(find build/DerivedData -name "*.app" -type d | head -n 1)
+          echo "Found app at: $APP_PATH"
+          mkdir -p build/Payload
+          cp -R "$APP_PATH" build/Payload/
+          cd build
+          zip -qr nanoMuse-unsigned.ipa Payload
+          ls -lh nanoMuse-unsigned.ipa
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nanoMuse-unsigned-ipa
+          path: android/src/ios/build/nanoMuse-unsigned.ipa
+          retention-days: 7
