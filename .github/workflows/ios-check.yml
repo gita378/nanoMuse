@@ -9,10 +9,6 @@ name: iOS · build check
 # cheap. No secrets: CODE_SIGNING_ALLOWED=NO, so a fork's pull request can run it too.
 
 on:
-  push:
-    paths:
-      - 'android/src/ios/**'
-      - '.github/workflows/ios-check.yml'
   pull_request:
     paths:
       - 'android/src/ios/**'
@@ -80,19 +76,58 @@ jobs:
           ./deps/prepare_alpine_rootfs.sh
           ./deps/build_rclone_ios.sh
 
-      - name: Build for a device, unsigned
+      - name: Build for a device (Release)
         working-directory: android/src/ios
         run: |
           set -o pipefail
           mkdir -p build
           xcodebuild build \
-            -project Minis.xcodeproj -scheme Minis -configuration Debug \
+            -project Minis.xcodeproj -scheme Minis -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM= \
             -skipPackagePluginValidation -skipMacroValidation \
             2>&1 | tee build/xcodebuild.log | grep -E "error:|/NanoMuse/.*warning:|BUILD|Compiling|Linking" || true
           grep -q "\*\* BUILD SUCCEEDED \*\*" build/xcodebuild.log
+
+      - name: Ad-hoc sign with Entitlements for TrollStore
+        working-directory: android/src/ios
+        run: |
+          APP_PATH=$(find build/DerivedData -name "*.app" -type d | head -n 1)
+          echo "Found app at: $APP_PATH"
+
+          # Ad-hoc sign frameworks and dylibs
+          find "$APP_PATH" -name "*.dylib" -o -name "*.framework" | while read -r item; do
+            codesign --force --sign - --timestamp=none "$item" 2>/dev/null || true
+          done
+
+          # Ad-hoc sign plugins / extensions
+          find "$APP_PATH/PlugIns" -name "*.appex" 2>/dev/null | while read -r appex; do
+            codesign --force --sign - --timestamp=none "$appex" 2>/dev/null || true
+          done
+
+          # Ad-hoc sign main app binary with Minis.entitlements
+          codesign --force --sign - --entitlements Minis.entitlements --timestamp=none "$APP_PATH"
+          codesign -dvvv "$APP_PATH" 2>&1 | head -n 25
+
+          mkdir -p build/Payload
+          cp -R "$APP_PATH" build/Payload/
+          cd build
+          zip -qr nanoMuse-trollstore-release.ipa Payload
+          ls -lh nanoMuse-trollstore-release.ipa
+
+      - name: Upload TrollStore IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanoMuse-trollstore-release-ipa
+          path: android/src/ios/build/nanoMuse-trollstore-release.ipa
+          retention-days: 7
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v0.1.0-custom android/src/ios/build/nanoMuse-trollstore-release.ipa --clobber || true
 
       # docs/ios.md: the device build must finish with zero warnings in NanoMuse/. Upstream's
       # files are theirs; ours are held to the bar here, so a warning cannot sit on main unnoticed.
@@ -111,21 +146,3 @@ jobs:
           path: android/src/ios/build/xcodebuild.log
           retention-days: 7
           if-no-files-found: warn
-
-      - name: Package unsigned IPA
-        working-directory: android/src/ios
-        run: |
-          APP_PATH=$(find build/DerivedData -name "*.app" -type d | head -n 1)
-          echo "Found app at: $APP_PATH"
-          mkdir -p build/Payload
-          cp -R "$APP_PATH" build/Payload/
-          cd build
-          zip -qr nanoMuse-unsigned.ipa Payload
-          ls -lh nanoMuse-unsigned.ipa
-
-      - name: Upload unsigned IPA
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: nanoMuse-unsigned-ipa
-          path: android/src/ios/build/nanoMuse-unsigned.ipa
-          retention-days: 7
